@@ -47,7 +47,7 @@ vae.load_state_dict(vae_state['state_dict'])
 
 # Loading model
 rnn_dir = join(args.logdir, 'mdrnn')
-rnn_file = join(rnn_dir, 'best.tar')
+rnn_file = join(rnn_dir, 'checkpoint.tar')
 
 if not exists(rnn_dir):
     mkdir(rnn_dir)
@@ -73,7 +73,7 @@ if exists(rnn_file) and not args.noreload:
     e = rnn_state["epoch"]
 else:
     e = 0    
-  
+early_stopping.patience = 400  
 # Data Loading
 transform = transforms.Lambda(
     lambda x: np.transpose(x, (0, 3, 1, 2)) / 255)
@@ -207,7 +207,11 @@ def data_pass(epoch, train, include_reward):# pylint: disable=too-many-locals
     
        
     pbar.close()
-    return cum_loss * BATCH_SIZE_LSTM / len(loader.dataset)
+    loss_out = cum_loss * BATCH_SIZE_LSTM / len(loader.dataset)
+    gmm_out = cum_gmm * BATCH_SIZE_LSTM / len(loader.dataset)
+    bce_out = cum_bce * BATCH_SIZE_LSTM / len(loader.dataset)
+    mse_out = cum_mse * BATCH_SIZE_LSTM / len(loader.dataset)
+    return loss_out, gmm_out, bce_out, mse_out
     
 train = partial(data_pass, train=True, include_reward=args.include_reward)
 test = partial(data_pass, train=False, include_reward=args.include_reward)
@@ -216,9 +220,16 @@ cur_best = None
 
 for ep in range(epochs-e):
     e = e + 1
-    train(e)
-    test_loss = test(e)
+    train_loss, train_gmm, train_bce, train_mse = train(e)
+    test_loss, test_gmm, test_bce, test_mse = test(e)
+    writer.add_scalar('train_loss', train_loss, e)
+    writer.add_scalar('train_gmm', train_gmm, e)
+    writer.add_scalar('train_mse', train_mse, e)
+    writer.add_scalar('train_bce', train_bce, e)
     writer.add_scalar('test_loss', test_loss, e)
+    writer.add_scalar('test_gmm', test_gmm, e)
+    writer.add_scalar('test_mse', test_mse, e)
+    writer.add_scalar('test_bce', test_bce, e)
     writer.flush()
     lr_scheduler(test_loss)
     early_stopping(test_loss)

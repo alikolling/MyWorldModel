@@ -134,7 +134,7 @@ class MDRNNCell(_MDRNNBase):
             - rs: (BSIZE) torch tensor
             - ds: (BSIZE) torch tensor
         '''
-        
+        sequence = actions.size(0)
         in_al = torch.cat([actions, latents], dim=1)
         
         next_hidden = self.rnn(in_al, hidden)
@@ -153,5 +153,5 @@ class MDRNNCell(_MDRNNBase):
         
         ds = self.z_ds(z).view(-1, sequence)
 
-        return mus, sigmas, logpi, r, d, next_hidden
+        return mus, sigmas, pi, rs, ds, next_hidden
         

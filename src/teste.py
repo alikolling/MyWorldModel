@@ -19,6 +19,8 @@ from torch.utils.data import DataLoader
 from data.loaders import RolloutObservationDataset
 
 from utils.misc import save_checkpoint
+import matplotlib.pyplot as plt
+import numpy as np
 
 transform_test = transforms.Compose([
     transforms.ToPILImage(),
@@ -26,7 +28,7 @@ transform_test = transforms.Compose([
     transforms.ToTensor()]) 
 
 dataset_test = RolloutObservationDataset('datasets/carracing', transform_test, train=False)
-test_loader = DataLoader(dataset_test, batch_size=32, shuffle=True, num_workers=2)
+test_loader = DataLoader(dataset_test, batch_size=16, shuffle=True, num_workers=2)
 
 model = VariationalAutoencoder()
 
@@ -47,9 +49,17 @@ if not False and exists(reload_file):
               state['precision']))
     model.load_state_dict(state['state_dict'])
 
-test = next(iter(test_loader)).to(DEVICE) 
-print(test.shape)   
-sample,_,_ = model(test)
-print(sample.shape)
-save_image(sample,'teste.png')
-save_image(test,'a.png')
+#test = next(iter(test_loader)).to(DEVICE) 
+#print(test.shape)   
+#sample,_,_ = model(test)
+#print(sample.shape)
+#save_image(sample,'reconstrução.png')
+#save_image(test,'original.png')
+rnd = torch.randn(2,LATENT_VEC).to(DEVICE)
+rnd_sample = model.decoder(rnd).cpu()
+np.savetxt("rnd.csv", rnd.cpu().numpy() ,delimiter =", ", fmt ='% s')
+save_image(rnd_sample,'random.png')
+rnd1 = torch.randn(2,LATENT_VEC).to(DEVICE)
+rnd_sample1 = model.decoder(rnd1).cpu()
+np.savetxt("rnd1.csv", rnd1.cpu().numpy() ,delimiter =", ", fmt ='% s')
+save_image(rnd_sample1,'random1.png')

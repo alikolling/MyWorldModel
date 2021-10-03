@@ -80,12 +80,8 @@ class SimulatedCarracing(gym.Env): # pylint: disable=too-many-instance-attribute
         with torch.no_grad():
             action = torch.Tensor(action).unsqueeze(0)
             mu, sigma, pi, r, d, n_h = self._rnn(action, self._lstate, self._hstate)
-            pi = pi.squeeze()
-            mixt = Categorical(torch.exp(pi)).sample().item()
-
-            self._lstate = mu[:, mixt, :] # + sigma[:, mixt, :] * torch.randn_like(mu[:, mixt, :])
+            self._lstate = torch.sum(pi * torch.normal(mu, sigma), dim=2).view(-1,32)
             self._hstate = n_h
-
             self._obs = self._decoder(self._lstate)
             np_obs = self._obs.numpy()
             np_obs = np.clip(np_obs, 0, 1) * 255
