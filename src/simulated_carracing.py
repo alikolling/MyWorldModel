@@ -7,10 +7,11 @@ import torch
 from torch.distributions.categorical import Categorical
 import gym
 from gym import spaces
+import numpy as np
 from models.vae import VariationalAutoencoder
 from models.mdrnn import MDRNNCell
 from lib.consts import *
-
+import matplotlib.pyplot as plt
 import numpy as np
 
 class SimulatedCarracing(gym.Env): # pylint: disable=too-many-instance-attributes
@@ -51,7 +52,7 @@ class SimulatedCarracing(gym.Env): # pylint: disable=too-many-instance-attribute
         self._rnn.load_state_dict(rnn_state_dict)
 
         # init state
-        self._lstate = torch.randn(1, LATENT_VEC)
+        self._lstate = torch.randn(1, LATENT_VEC)#torch.tensor(np.array([-0.96564144, 0.23670846, 0.9780302, 0.52927977, 0.06763684, 0.7146183, -1.3294405, -1.2075509, 1.7236525, -0.63658005, 1.992094, -1.3950056, -0.40004167, 0.20988561, 0.88519704, 0.061201278, -0.21072277, 0.49460918, 0.030673742, -0.071469426, 0.7565973, -0.4986614, 0.54357207, -1.28455, 1.3404804, 1.4076554, -0.92123044, 0.62640274, -0.12999089, -0.1744873, 0.49015865, -0.2498809]))
         self._hstate = 2 * [torch.zeros(1, HIDDEN_UNITS)]
 
         # obs
@@ -64,7 +65,7 @@ class SimulatedCarracing(gym.Env): # pylint: disable=too-many-instance-attribute
 
     def reset(self):
         """ Resetting """
-        import matplotlib.pyplot as plt
+
         self._lstate = torch.randn(1, LATENT_VEC)
         self._hstate = 2 * [torch.zeros(1, HIDDEN_UNITS)]
 
@@ -94,7 +95,6 @@ class SimulatedCarracing(gym.Env): # pylint: disable=too-many-instance-attribute
 
     def render(self): # pylint: disable=arguments-differ
         """ Rendering """
-        import matplotlib.pyplot as plt
         if not self.monitor:
             self.figure = plt.figure()
             self.monitor = plt.imshow(

@@ -49,13 +49,13 @@ transform_test = transforms.Compose([
     transforms.Resize((HEIGHT,WIDTH)),
     transforms.ToTensor()]) 
 
-dataset_train = RolloutObservationDataset('datasets/carracing', transform_train, train=True)
-dataset_test = RolloutObservationDataset('datasets/carracing', transform_test, train=False)
+dataset_train = RolloutObservationDataset('datasets/turtlebot3', transform_train, train=True)
+dataset_test = RolloutObservationDataset('datasets/turtlebot3', transform_test, train=False)
 
 train_loader = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=2)
 test_loader = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=True, num_workers=2)
 
-writer = SummaryWriter("logs/vae")
+writer = SummaryWriter("logs/turtlebot3/vae")
 
 model = VariationalAutoencoder()
 
@@ -146,7 +146,7 @@ if not exists(vae_dir):
     mkdir(join(vae_dir, 'samples'))
 
 
-reload_file = join(vae_dir, 'best.tar')
+reload_file = join(vae_dir, 'checkpoint.tar')
 if not args.noreload and exists(reload_file):
     state = torch.load(reload_file)
     print("Reloading model at epoch {}"
@@ -157,21 +157,25 @@ if not args.noreload and exists(reload_file):
     optimizer.load_state_dict(state['optimizer'])
     lr_scheduler.load_state_dict(state['scheduler'])
     early_stopping.load_state_dict(state['early_stopping'])
-
+    e = state["epoch"]
+else:
+    e = 0     
 cur_best = None
-
-for epoch in range(1, args.epochs + 1):
-
-    train(epoch)
+early_stopping.patience = 400
+early_stopping.early_stop = False
+for epoch in range(1, args.epochs + 1 - e):
+    
+    e = e + 1
+    train(e)
     writer.flush()
     test_loss, test_bce, test_kld = test()
     lr_scheduler(test_loss)
     early_stopping(test_loss)
     
     
-    writer.add_scalar('avg test loss', test_loss, epoch)
-    writer.add_scalar('avg test bce loss', test_bce, epoch)
-    writer.add_scalar('avg test kld loss', test_kld, epoch)         
+    writer.add_scalar('avg test loss', test_loss, e)
+    writer.add_scalar('avg test bce loss', test_bce, e)
+    writer.add_scalar('avg test kld loss', test_kld, e)         
     writer.flush()
     
     # checkpointing
@@ -182,7 +186,7 @@ for epoch in range(1, args.epochs + 1):
         cur_best = test_loss
 
     save_checkpoint({
-        'epoch': epoch,
+        'epoch': e,
         'state_dict': model.state_dict(),
         'precision': test_loss,
         'optimizer': optimizer.state_dict(),
@@ -196,9 +200,9 @@ for epoch in range(1, args.epochs + 1):
             sample = torch.randn(RED_SIZE, LATENT_VEC).to(DEVICE)
             sample = model.decoder(sample).cpu()
             save_image(sample.view(64, 3, RED_SIZE, RED_SIZE),
-                       join(vae_dir, 'samples/sample_' + str(epoch) + '.png'))
+                       join(vae_dir, 'samples/sample_' + str(e) + '.png'))
 
     if early_stopping.early_stop:
-        print("End of Training because of early stopping at epoch {}".format(epoch))
+        print("End of Training because of early stopping at epoch {}".format(e))
         break
 

@@ -21,11 +21,12 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
             join(root, sd, ssd) 
             for sd in listdir(root) if isdir(join(root, sd))
             for ssd in listdir(join(root, sd))]
+        
             
         if train:
-            self._files = self._files[:-600]
+            self._files = self._files[:1]
         else:
-            self._files = self._files[-600:]
+            self._files = self._files[1:]
         
         self._cum_size = None
         self._buffer = None
@@ -49,7 +50,7 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         pbar.set_description("Loading file buffer ...")
         
         for f in self._buffer_fnames:
-            with np.load(f) as data:
+            with np.load(f, allow_pickle=True) as data:
                 self._buffer += [{k: np.copy(v) for k, v in data.items()}]
                 self._cum_size += [self._cum_size[-1] + 
                                    self._data_per_sequence(data['rewards'].shape[0])]
@@ -125,7 +126,7 @@ class RolloutSequenceDataset(_RolloutDataset):# pylint: disable=too-few-public-m
         self._seq_len = seq_len
     
     def _get_data(self, data, seq_index):
-    
+        
         obs_data = data['observations'][seq_index:seq_index + self._seq_len + 1]
         obs_data = self._transform(obs_data.astype(np.float32))
         obs, next_obs = obs_data[:-1], obs_data[1:]
@@ -134,7 +135,7 @@ class RolloutSequenceDataset(_RolloutDataset):# pylint: disable=too-few-public-m
         reward , terminal = [data[key][seq_index+1:
                                       seq_index + self._seq_len + 1].astype(np.float32)
                              for key in ('rewards', 'terminals')]
-        
+
         # data is given in the form
         # (obs, action, reward, terminal, next_obs)
         return obs, action, reward, terminal, next_obs

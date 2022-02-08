@@ -46,8 +46,14 @@ vae.load_state_dict(vae_state['state_dict'])
 
 
 # Loading model
+best = False
 rnn_dir = join(args.logdir, 'mdrnn')
-rnn_file = join(rnn_dir, 'checkpoint.tar')
+checkpoint_fname = join(rnn_dir, 'checkpoint.tar')
+rnn_file = join(rnn_dir, 'best.tar')
+if best == True:
+    load_rnn_file = rnn_file
+else:
+    load_rnn_file = checkpoint_fname
 
 if not exists(rnn_dir):
     mkdir(rnn_dir)
@@ -61,8 +67,8 @@ lr_scheduler = LRScheduler(optimizer)
 early_stopping = EarlyStopping(patience=30)
 
 
-if exists(rnn_file) and not args.noreload:
-    rnn_state = torch.load(rnn_file)
+if exists(load_rnn_file) and not args.noreload:
+    rnn_state = torch.load(load_rnn_file)
     print("Loading MDRNN at epoch {} "
           "with test error {}".format(
               rnn_state["epoch"], rnn_state["precision"]))
@@ -78,11 +84,11 @@ early_stopping.patience = 400
 transform = transforms.Lambda(
     lambda x: np.transpose(x, (0, 3, 1, 2)) / 255)
 train_loader = DataLoader(
-    RolloutSequenceDataset('datasets/carracing', SEQ_LEN, transform, buffer_size=30),
-    batch_size=BATCH_SIZE_LSTM, num_workers=4, shuffle=True)
+    RolloutSequenceDataset('datasets/turtlebot3', SEQ_LEN, transform, buffer_size=30),
+    batch_size=1, num_workers=1, shuffle=True)
 test_loader = DataLoader(
-    RolloutSequenceDataset('datasets/carracing', SEQ_LEN, transform, train=False, buffer_size=10),
-    batch_size=BATCH_SIZE_LSTM, num_workers=4)
+    RolloutSequenceDataset('datasets/turtlebot3', SEQ_LEN, transform, train=False, buffer_size=10),
+    batch_size=1, num_workers=1)
 
 def to_latent(obs, next_obs):
     '''
@@ -95,14 +101,15 @@ def to_latent(obs, next_obs):
         - latent_obs: 4D torch tensor (BATCH_SIZE_LSTM, SEQ_LEN, LATENT_VEC)
         - next_latent_obs: 4D torch tensor (BATCH_SIZE_LSTM, SEQ_LEN, LATENT_VEC)
     '''
-    
+    seq_len = obs.size(1)
+    print(seq_len)
     with torch.no_grad():
         obs, next_obs = [
             f.upsample(x.view(-1, 3, SIZE, SIZE), size=RED_SIZE,
                        mode='bilinear', align_corners=True)
             for x in (obs, next_obs)]
     
-        latent_obs, latent_next_obs = [vae(x, encode=True).view(BATCH_SIZE_LSTM, SEQ_LEN, LATENT_VEC)
+        latent_obs, latent_next_obs = [vae(x, encode=True).view(-1, seq_len, LATENT_VEC)
          for x in (obs, next_obs)]
     
     return latent_obs, latent_next_obs
@@ -177,7 +184,7 @@ def data_pass(epoch, train, include_reward):# pylint: disable=too-many-locals
     
     for i, data in enumerate(loader):
         obs, action, reward, terminal, next_obs = [arr.to(DEVICE) for arr in data]
-        
+        print(action.size(), obs.size())
         # transform obs to latent
         latent_obs, latent_next_obs = to_latent(obs, next_obs)
         
@@ -198,7 +205,19 @@ def data_pass(epoch, train, include_reward):# pylint: disable=too-many-locals
         cum_bce += losses['bce'].item()
         cum_mse += losses['mse'].item() if hasattr(losses['mse'], 'item') else \
             losses['mse']
+        if train:
+            writer.add_scalar('train_step_loss', losses['loss'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('train_step_gmm', losses['gmm'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('train_step_mse', losses['mse'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('train_step_bce', losses['bce'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i)) 
         
+        else:
+            writer.add_scalar('test_step_loss', losses['loss'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('test_step_gmm', losses['gmm'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('test_step_mse', losses['mse'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+            writer.add_scalar('test_step_bce', losses['bce'].item(), ((epoch-1)*(len(loader.dataset)/BATCH_SIZE_LSTM)+i))
+        
+        writer.flush()
         pbar.set_postfix_str("loss={loss:10.6f} bce={bce:10.6f} "
                              "gmm={gmm:10.6f} mse={mse:10.6f}".format(
                                  loss=cum_loss / (i + 1), bce=cum_bce / (i + 1),
@@ -222,14 +241,12 @@ for ep in range(epochs-e):
     e = e + 1
     train_loss, train_gmm, train_bce, train_mse = train(e)
     test_loss, test_gmm, test_bce, test_mse = test(e)
-    writer.add_scalar('train_loss', train_loss, e)
-    writer.add_scalar('train_gmm', train_gmm, e)
-    writer.add_scalar('train_mse', train_mse, e)
-    writer.add_scalar('train_bce', train_bce, e)
-    writer.add_scalar('test_loss', test_loss, e)
-    writer.add_scalar('test_gmm', test_gmm, e)
-    writer.add_scalar('test_mse', test_mse, e)
-    writer.add_scalar('test_bce', test_bce, e)
+    
+    writer.add_scalar('loss',{'train_loss': train_loss,'test_loss': test_loss}, e)
+    writer.add_scalar('gmm_loss',{'train_gmm': train_gmm,'test_gmm': test_gmm,}, e)
+    writer.add_scalar('mse_loss',{'train_mse': train_mse,'test_mse': test_mse}, e)
+    writer.add_scalar('bce_loss',{'train_bce': train_bce,'test_bce': test_bce,}, e)
+
     writer.flush()
     lr_scheduler(test_loss)
     early_stopping(test_loss)
@@ -239,7 +256,7 @@ for ep in range(epochs-e):
     if is_best:
         cur_best = test_loss
         
-    checkpoint_fname = join(rnn_dir, 'checkpoint.tar')
+    
     save_checkpoint({
         "state_dict": mdrnn.state_dict(),
         "optimizer": optimizer.state_dict(),

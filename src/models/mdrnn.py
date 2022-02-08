@@ -36,7 +36,12 @@ def gmm_loss(y, out_mu, out_sigma, out_pi): # pylint: disable=too-many-arguments
     NOTE: The loss is not reduced along the feature dimension (i.e. it should scale ~linearily
     with fs).
     '''
-    
+
+    ok = Normal.arg_constraints["loc"].check(out_mu)
+    bad_elements = out_mu[~ok]
+    if bad_elements.data.size(dim=0) > 0:
+        print(bad_elements)
+
     result = Normal(loc=out_mu, scale=out_sigma)
     y = y.view(-1, SEQ_LEN, 1, LATENT_VEC)
     result = torch.exp(result.log_prob(y))
@@ -57,7 +62,8 @@ class _MDRNNBase(nn.Module):
         self.actions = actions
         self.hiddens = hiddens
         self.gaussians = gaussians
-
+        
+        self.tanh = nn.Tanh()
         self.z_pi = nn.Linear(self.hiddens, self.gaussians * self.latents)
         self.z_sigma = nn.Linear(self.hiddens, self.gaussians * self.latents)
         self.z_mu = nn.Linear(self.hiddens, self.gaussians * self.latents)
@@ -75,8 +81,8 @@ class MDRNN(_MDRNNBase):
     '''
     def __init__(self, latents, actions, hiddens, gaussians):
         super().__init__(latents, actions, hiddens, gaussians)
-        self.rnn = nn.LSTM(latents + actions, hiddens)
-        
+        self.rnn = nn.LSTM(input_size=latents + actions, hidden_size=hiddens,batch_first=True)        
+    
     def forward(self, actions, latents): # pylint: disable=arguments-differ
         ''' MULTI STEPS forward.
         :args actions: (BSIZE, SEQ_LEN, ASIZE) torch tensor
@@ -92,9 +98,11 @@ class MDRNN(_MDRNNBase):
         '''
         
         sequence, bs = actions.size(1), actions.size(0)
-
+        
+        
         ins = torch.cat([actions, latents], dim=-1)
         z, _ = self.rnn(ins)
+        z = self.tanh(z)
         
         pi = self.z_pi(z).view(-1, sequence, self.gaussians, self.latents)
         pi = f.softmax(pi, dim=2)
@@ -139,7 +147,8 @@ class MDRNNCell(_MDRNNBase):
         
         next_hidden = self.rnn(in_al, hidden)
         z = next_hidden[0]
-        
+        z = self.tanh(z)
+
         pi = self.z_pi(z).view(-1, sequence, self.gaussians, self.latents)
         pi = f.softmax(pi, dim=2)
         pi = pi / TEMPERATURE

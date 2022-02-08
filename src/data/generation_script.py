@@ -27,7 +27,7 @@ def _threaded_generation(i):
     makedirs(tdir, exist_ok=True)
     cmd = ['xvfb-run', '-s', '"-screen 0 1400x900x24"']
     cmd += ['--server-num={}'.format(i + 1)]
-    cmd += ["python3", "-m", "data.carracing", "--dir",
+    cmd += ["python3", "-m", "data.turtlebot3", "--dir",
             tdir, "--rollouts", str(rpt), "--policy", args.policy]
     cmd = " ".join(cmd)
     print(cmd)
